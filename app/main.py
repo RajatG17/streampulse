@@ -1,7 +1,7 @@
 import os 
 import time
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 import redis
 
@@ -9,7 +9,7 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_PORT = int(os.getenv("REDIS_PORT_NUM", "6379"))
 
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 
@@ -37,8 +37,8 @@ def health():
 
 @app.get("/metrics")
 def metrics():
-    data = generate_lates()
-    return app.response_class(data, media_type=CONTENT_TYPE_LATEST)
+    data = generate_latest()
+    return Response(data, media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/ingest")
 def ingest(ev: Event):
@@ -125,11 +125,11 @@ def top_paths(tenant: str, n: int = 10):
     try:
         k_top = f"top_paths:tenant:{tenant}"
         t0 = time.time()
-        items: list = r.zrevrange(k_top, 0, max(n-1, 0), withscores=True)
+        items = r.zrevrange(k_top, 0, max(n-1, 0), withscores=True) or list()
         REDIS_OPS.labels("zrevrange").inc()
         REDIS_LAT.labels("zrevrange").observe(time.time() - t0)
 
-        return[{"path": p, "count": int(c)} for p, c in items]
+        return[{"path": p, "count": int(c)} for p, c in items] 
     
     except Exception as e:
         status = "500"
